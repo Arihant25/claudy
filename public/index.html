@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claudy Chat Interface</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22currentColor%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22 class=%22feather feather-cloud%22><path d=%22M20 17.58A5.42 5.42 0 0 0 18 7a5.5 5.5 0 0 0-10.9 1.5A4.5 4.5 0 0 0 4 17.58a4.5 4.5 0 0 0 4.5 4.42h11a4.5 4.5 0 0 0 4.5-4.42z%22></path></svg>">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div id="app">
+        <div id="sidebar">
+            <button id="new-chat">New Chat</button>
+            <div id="conversation-list"></div>
+            <button id="settings-btn">Settings</button>
+        </div>
+        <div id="main-content">
+            <div id="chat-container">
+                <div class="empty-state">
+                    <div class="cloud-icon">☁️</div>
+                    <h1>Claudy</h1>
+                    <p>The world's knowledge at your fingertips.</p>
+                </div>
+            </div>
+            <div id="input-container">
+                <textarea id="input-box" placeholder="Message Claudy..."></textarea>
+                <input type="file" id="file-input" multiple style="display: none">
+                <div id="file-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="settings-modal">
+        <div class="modal-content">
+            <h2>Settings</h2>
+            <div class="form-group">
+                <label for="api-key">API Key</label>
+                <input type="password" id="api-key">
+            </div>
+            <div class="form-group">
+                <label for="max-tokens">Max Tokens</label>
+                <div class="slider-container">
+                    <input type="range" id="max-tokens" class="slider" min="0" max="8192" value="8192">
+                    <div class="slider-value" id="max-tokens-value">8192</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="temperature">Temperature</label>
+                <div class="slider-container">
+                    <input type="range" id="temperature" class="slider" min="0" max="1" step="0.1" value="0.2">
+                    <div class="slider-value" id="temperature-value">0.2</div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button onclick="saveSettings()">Save</button>
+                <button onclick="closeSettings()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentConversation = null;
+        let conversations = {};
+        let settings = {
+            apiKey: localStorage.getItem('apiKey') || '',
+            maxTokens: parseInt(localStorage.getItem('maxTokens')) || 8192,
+            temperature: parseFloat(localStorage.getItem('temperature')) || 0.2
+        };
+
+        // Update slider values
+        document.getElementById('max-tokens').addEventListener('input', function () {
+            document.getElementById('max-tokens-value').textContent = this.value;
+        });
+        document.getElementById('temperature').addEventListener('input', function () {
+            document.getElementById('temperature-value').textContent = this.value;
+        });
+
+        document.getElementById('new-chat').addEventListener('click', startNewChat);
+        document.getElementById('settings-btn').addEventListener('click', openSettings);
+        document.getElementById('input-box').addEventListener('keydown', handleInput);
+        document.getElementById('file-input').addEventListener('change', handleFileUpload);
+
+        function startNewChat() {
+            const now = new Date();
+            const options = { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: true };
+            const conversationName = now.toLocaleString('en-IN', options);
+            currentConversation = conversationName;
+            conversations[currentConversation] = [];
+            updateConversationList();
+            clearChat();
+            saveConversations();
+        }
+
+        function loadConversation(id) {
+            currentConversation = id;
+            clearChat();
+
+            // Display all messages from the selected conversation
+            conversations[id].forEach(message => {
+                appendMessage(message.role, message.content);
+            });
+
+            // Update visual indication of selected conversation
+            document.querySelectorAll('.conversation-item').forEach(item => {
+                item.classList.remove('selected');
+                if (item.querySelector('.conversation-title').textContent === id) {
+                    item.classList.add('selected');
+                }
+            });
+        }
+
+        function updateConversationList() {
+            const list = document.getElementById('conversation-list');
+            list.innerHTML = '';
+            Object.keys(conversations).forEach(id => {
+                const item = document.createElement('div');
+                item.className = 'conversation-item';
+
+                const title = document.createElement('div');
+                title.className = 'conversation-title';
+                title.textContent = id;
+                title.onclick = () => loadConversation(id);
+
+                const deleteBtn = document.createElement('span');
+                deleteBtn.className = 'delete-chat';
+                deleteBtn.innerHTML = '🗑️';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteConversation(id);
+                };
+
+                item.appendChild(title);
+                item.appendChild(deleteBtn);
+                list.appendChild(item);
+            });
+        }
+
+        function deleteConversation(id) {
+            if (confirm('Are you sure you want to delete this conversation?')) {
+                delete conversations[id];
+                if (currentConversation === id) {
+                    currentConversation = null;
+                    clearChat();
+                }
+                saveConversations();
+                updateConversationList();
+            }
+        }
+
+        function saveConversations() {
+            localStorage.setItem('conversations', JSON.stringify(conversations));
+        }
+        async function streamResponse(message, files) {
+            const messagesHistory = conversations[currentConversation].map(msg => ({
+                role: msg.role,
+                content: [{
+                    type: "text",
+                    text: msg.content
+                }]
+            }));
+
+            messagesHistory.push({
+                role: 'user',
+                content: [{
+                    type: "text",
+                    text: message
+                }]
+            });
+
+            if (files.length > 0) {
+                files.forEach(file => {
+                    messagesHistory.push({
+                        role: 'user',
+                        content: [{
+                            type: "text",
+                            text: `File: ${file.name}\n${file.content}`
+                        }]
+                    });
+                });
+            }
+
+            const pendingMessageElement = appendMessage('assistant', '', true);
+            let accumulatedResponse = '';
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        apiKey: settings.apiKey,
+                        messages: messagesHistory,
+                        maxTokens: settings.maxTokens,
+                        temperature: settings.temperature
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API request failed: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const responseContent = data.content[0].text;
+
+                // Simulate streaming
+                const words = responseContent.split(' ');
+                for (let word of words) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    accumulatedResponse += word + ' ';
+                    pendingMessageElement.querySelector('.message-content').innerHTML =
+                        marked.parse(accumulatedResponse);
+                    pendingMessageElement.scrollIntoView({ behavior: 'smooth' });
+                }
+
+                pendingMessageElement.classList.remove('pending-message');
+                return accumulatedResponse;
+
+            } catch (error) {
+                console.error('API Error:', error);
+                pendingMessageElement.querySelector('.message-content').innerHTML =
+                    'Sorry, there was an error connecting to Claude. Please try again.';
+                pendingMessageElement.classList.remove('pending-message');
+                throw error;
+            }
+        }
+
+        function clearChat() {
+            const chatContainer = document.getElementById('chat-container');
+            chatContainer.innerHTML = '';
+            document.getElementById('file-list').innerHTML = '';
+            if (!currentConversation || conversations[currentConversation].length === 0) {
+                showEmptyState();
+            }
+        }
+
+        function showEmptyState() {
+            const chatContainer = document.getElementById('chat-container');
+            chatContainer.innerHTML = `
+                <div class="empty-state">
+                    <div class="cloud-icon">☁️</div>
+                    <h1>Claudy</h1>
+                    <p>The world's knowledge at your fingertips.</p>
+                </div>
+            `;
+        }
+
+        function handleInput(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('input-box');
+            const message = input.value.trim();
+            if (!message) return;
+
+            if (!currentConversation) startNewChat();
+            const chatContainer = document.getElementById('chat-container');
+            if (chatContainer.querySelector('.empty-state')) {
+                chatContainer.innerHTML = '';
+            }
+
+            input.value = '';
+
+            appendMessage('user', message);
+            const fileElements = document.querySelectorAll('.file-item');
+            const files = Array.from(fileElements).map(el => ({
+                name: el.dataset.name,
+                content: el.dataset.content
+            }));
+
+            document.getElementById('file-list').innerHTML = '';
+
+            try {
+                const response = await streamResponse(message, files);
+                if (response) {
+                    conversations[currentConversation].push({ role: 'user', content: message });
+                    conversations[currentConversation].push({ role: 'assistant', content: response });
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                appendMessage('assistant', 'Sorry, there was an error processing your request.');
+            }
+        }
+
+        function acceptResponse(conversationId, button) {
+            const messageElement = button.parentElement.parentElement;
+            messageElement.querySelector('.action-buttons').remove();
+            messageElement.classList.remove('pending-message');
+            localStorage.setItem('conversations', JSON.stringify(conversations));
+            updateConversationList();
+        }
+
+        function rejectResponse(button) {
+            button.parentElement.parentElement.remove();
+        }
+
+        function appendMessage(role, content, isPending = false) {
+            const chatContainer = document.getElementById('chat-container');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role} ${isPending ? 'pending-message' : ''}`;
+
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar';
+            avatar.innerHTML = role === 'assistant' ? '☁️' : '👤';
+
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageContent.innerHTML = marked.parse(content);
+
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(messageContent);
+            chatContainer.appendChild(messageDiv);
+
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return messageDiv;
+        }
+
+        function handleFileUpload(e) {
+            const files = e.target.files;
+            const fileList = document.getElementById('file-list');
+
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'file-item';
+                    fileItem.textContent = file.name;
+                    fileItem.dataset.name = file.name;
+                    fileItem.dataset.content = e.target.result;
+                    fileList.appendChild(fileItem);
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        function openSettings() {
+            document.getElementById('api-key').value = settings.apiKey;
+            document.getElementById('max-tokens').value = settings.maxTokens;
+            document.getElementById('temperature').value = settings.temperature;
+            document.getElementById('max-tokens-value').textContent = settings.maxTokens;
+            document.getElementById('temperature-value').textContent = settings.temperature;
+            document.getElementById('settings-modal').style.display = 'flex';
+        }
+
+        function closeSettings() {
+            document.getElementById('settings-modal').style.display = 'none';
+        }
+
+        function saveSettings() {
+            settings.apiKey = document.getElementById('api-key').value;
+            settings.maxTokens = parseInt(document.getElementById('max-tokens').value);
+            settings.temperature = parseFloat(document.getElementById('temperature').value);
+
+            localStorage.setItem('apiKey', settings.apiKey);
+            localStorage.setItem('maxTokens', settings.maxTokens);
+            localStorage.setItem('temperature', settings.temperature);
+
+            closeSettings();
+        }
+
+        // Load conversations from localStorage on startup
+        window.addEventListener('load', function () {
+            const savedConversations = localStorage.getItem('conversations');
+            if (savedConversations) {
+                conversations = JSON.parse(savedConversations);
+                updateConversationList();
+            }
+            startNewChat();
+        });
+    </script>
+</body>
+
+</html>
