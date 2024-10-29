@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claudy Chat Interface</title>
-    <link rel="icon"
-        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22currentColor%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22 class=%22feather feather-cloud%22><path d=%22M20 17.58A5.42 5.42 0 0 0 18 7a5.5 5.5 0 0 0-10.9 1.5A4.5 4.5 0 0 0 4 17.58a4.5 4.5 0 0 0 4.5 4.42h11a4.5 4.5 0 0 0 4.5-4.42z%22></path></svg>">
+    <title>🌥️ Claudy</title>
+    <link rel="icon" type="image/svg+xml" sizes="any"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌥️</text></svg>" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -21,13 +21,13 @@
         <div id="main-content">
             <div id="chat-container">
                 <div class="empty-state">
-                    <div class="cloud-icon">☁️</div>
+                    <div class="cloud-icon">🌥️</div>
                     <h1>Claudy</h1>
                     <p>The world's knowledge at your fingertips.</p>
                 </div>
             </div>
             <div id="input-container">
-                <textarea id="input-box" placeholder="Message Claudy..."></textarea>
+                <textarea id="input-box" placeholder="Type your message (Shift + Enter to send)"></textarea>
                 <input type="file" id="file-input" multiple style="display: none">
                 <div id="file-list"></div>
             </div>
@@ -40,6 +40,10 @@
             <div class="form-group">
                 <label for="api-key">API Key</label>
                 <input type="password" id="api-key">
+            </div>
+            <div class="form-group">
+                <label for="system-prompt">System Prompt</label>
+                <textarea id="system-prompt" rows="3" placeholder="Enter system prompt..."></textarea>
             </div>
             <div class="form-group">
                 <label for="max-tokens">Max Tokens</label>
@@ -55,6 +59,14 @@
                     <div class="slider-value" id="temperature-value">0.2</div>
                 </div>
             </div>
+            <div class="form-group">
+                <label>Theme</label>
+                <select id="theme-selector">
+                    <option value="system">System Default</option>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                </select>
+            </div>
             <div class="modal-buttons">
                 <button onclick="saveSettings()">Save</button>
                 <button onclick="closeSettings()">Cancel</button>
@@ -68,21 +80,118 @@
         let settings = {
             apiKey: localStorage.getItem('apiKey') || '',
             maxTokens: parseInt(localStorage.getItem('maxTokens')) || 8192,
-            temperature: parseFloat(localStorage.getItem('temperature')) || 0.2
+            temperature: parseFloat(localStorage.getItem('temperature')) || 0.2,
+            systemPrompt: localStorage.getItem('systemPrompt') || '',
+            theme: localStorage.getItem('theme') || 'system'
         };
 
-        // Update slider values
-        document.getElementById('max-tokens').addEventListener('input', function () {
-            document.getElementById('max-tokens-value').textContent = this.value;
-        });
-        document.getElementById('temperature').addEventListener('input', function () {
-            document.getElementById('temperature-value').textContent = this.value;
+        // Theme handling
+        function updateTheme() {
+            const theme = settings.theme === 'system'
+                ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                : settings.theme;
+            document.documentElement.setAttribute('data-theme', theme);
+            document.body.setAttribute('data-theme', theme); // Add this line
+            updateCloudEmoji();
+        }
+        function updateCloudEmoji() {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const cloudEmoji = isDark ? '🌩️' : '🌥️';
+            document.title = `${cloudEmoji} Claudy`;
+            document.querySelector('.cloud-icon').textContent = cloudEmoji;
+        }
+
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+            if (settings.theme === 'system') updateTheme();
         });
 
-        document.getElementById('new-chat').addEventListener('click', startNewChat);
-        document.getElementById('settings-btn').addEventListener('click', openSettings);
-        document.getElementById('input-box').addEventListener('keydown', handleInput);
-        document.getElementById('file-input').addEventListener('change', handleFileUpload);
+        // Initialize theme
+        updateTheme();
+
+        // Copy functionality
+        function addCopyButton(element, text, isMarkdown = false) {
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-button';
+            copyBtn.innerHTML = '📋';
+            copyBtn.title = `Copy as ${isMarkdown ? 'Markdown' : 'text'}`;
+            copyBtn.onclick = async () => {
+                await navigator.clipboard.writeText(text);
+                copyBtn.innerHTML = '✓';
+                setTimeout(() => copyBtn.innerHTML = '📋', 2000);
+            };
+            element.appendChild(copyBtn);
+        }
+
+        // Code block handling
+        marked.setOptions({
+            highlight: function (code, language) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'code-wrapper';
+                const pre = document.createElement('pre');
+                pre.className = language ? `language-${language}` : '';
+                pre.textContent = code;
+                wrapper.appendChild(pre);
+                addCopyButton(wrapper, code);
+                return wrapper.outerHTML;
+            }
+        });
+
+        // Input handling
+        document.getElementById('input-box').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                if (e.shiftKey) {
+                    sendMessage();
+                    e.preventDefault();
+                }
+            }
+        });
+
+        // Message handling
+        function appendMessage(role, content, isPending = false) {
+            const chatContainer = document.getElementById('chat-container');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role} ${isPending ? 'pending-message' : ''}`;
+            messageDiv.style.opacity = '0'; // Start with opacity 0
+
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar';
+            avatar.innerHTML = role === 'assistant' ?
+                (document.documentElement.getAttribute('data-theme') === 'dark' ? '🌩️' : '🌥️') :
+                '👤';
+
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageContent.innerHTML = marked.parse(content);
+
+            // Add copy button for assistant messages
+            if (role === 'assistant' && content) {
+                addCopyButton(messageDiv, content, true);
+            }
+
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(messageContent);
+            chatContainer.appendChild(messageDiv);
+
+            // Trigger animation
+            setTimeout(() => {
+                messageDiv.style.opacity = '1';
+                messageDiv.style.transform = 'translateY(0)';
+            }, 10);
+
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return messageDiv;
+        }
+
+        // Auto-delete empty chats
+        function cleanupEmptyChats() {
+            Object.keys(conversations).forEach(id => {
+                if (conversations[id].length === 0) {
+                    delete conversations[id];
+                }
+            });
+            saveConversations();
+            updateConversationList();
+        }
 
         function startNewChat() {
             const now = new Date();
@@ -154,6 +263,7 @@
         function saveConversations() {
             localStorage.setItem('conversations', JSON.stringify(conversations));
         }
+
         async function streamResponse(message, files) {
             const messagesHistory = conversations[currentConversation].map(msg => ({
                 role: msg.role,
@@ -229,6 +339,7 @@
             }
         }
 
+        // This function is called when the user clicks the "New Chat" button
         function clearChat() {
             const chatContainer = document.getElementById('chat-container');
             chatContainer.innerHTML = '';
@@ -299,28 +410,22 @@
         }
 
         function rejectResponse(button) {
-            button.parentElement.parentElement.remove();
-        }
+            const messageElement = button.parentElement.parentElement;
+            const messageIndex = Array.from(messageElement.parentElement.children).indexOf(messageElement);
 
-        function appendMessage(role, content, isPending = false) {
-            const chatContainer = document.getElementById('chat-container');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${role} ${isPending ? 'pending-message' : ''}`;
+            // Remove the last two messages from the conversation (user input and assistant response)
+            if (currentConversation) {
+                conversations[currentConversation].splice(-2, 2);
+            }
 
-            const avatar = document.createElement('div');
-            avatar.className = 'avatar';
-            avatar.innerHTML = role === 'assistant' ? '☁️' : '👤';
+            // Put the user's message back in the input box
+            const userMessage = conversations[currentConversation][messageIndex - 1]?.content;
+            if (userMessage) {
+                document.getElementById('input-box').value = userMessage;
+            }
 
-            const messageContent = document.createElement('div');
-            messageContent.className = 'message-content';
-            messageContent.innerHTML = marked.parse(content);
-
-            messageDiv.appendChild(avatar);
-            messageDiv.appendChild(messageContent);
-            chatContainer.appendChild(messageDiv);
-
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-            return messageDiv;
+            messageElement.previousElementSibling?.remove(); // Remove user message
+            messageElement.remove(); // Remove assistant message
         }
 
         function handleFileUpload(e) {
@@ -345,11 +450,24 @@
             document.getElementById('api-key').value = settings.apiKey;
             document.getElementById('max-tokens').value = settings.maxTokens;
             document.getElementById('temperature').value = settings.temperature;
+            document.getElementById('system-prompt').value = settings.systemPrompt;
+            document.getElementById('theme-selector').value = settings.theme;
+
+            // Update displayed values
             document.getElementById('max-tokens-value').textContent = settings.maxTokens;
             document.getElementById('temperature-value').textContent = settings.temperature;
+
+            // Add input event listeners for sliders
+            document.getElementById('max-tokens').addEventListener('input', function () {
+                document.getElementById('max-tokens-value').textContent = this.value;
+            });
+
+            document.getElementById('temperature').addEventListener('input', function () {
+                document.getElementById('temperature-value').textContent = this.value;
+            });
+
             document.getElementById('settings-modal').style.display = 'flex';
         }
-
         function closeSettings() {
             document.getElementById('settings-modal').style.display = 'none';
         }
@@ -366,15 +484,29 @@
             closeSettings();
         }
 
-        // Load conversations from localStorage on startup
         window.addEventListener('load', function () {
+            cleanupEmptyChats();
             const savedConversations = localStorage.getItem('conversations');
             if (savedConversations) {
                 conversations = JSON.parse(savedConversations);
                 updateConversationList();
             }
             startNewChat();
+
+            // Add event listeners
+            document.getElementById('new-chat').addEventListener('click', startNewChat);
+            document.getElementById('settings-btn').addEventListener('click', openSettings);
+            document.getElementById('input-box').addEventListener('keydown', handleInput);
+            document.getElementById('file-input').addEventListener('change', handleFileUpload);
+            document.getElementById('theme-selector').addEventListener('change', function () {
+                settings.theme = this.value;
+                localStorage.setItem('theme', settings.theme);
+                updateTheme();
+            });
+
         });
+
+
     </script>
 </body>
 

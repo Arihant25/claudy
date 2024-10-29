@@ -25,13 +25,14 @@ We can never see your API keys, and we don't store any of your data. Claudy is d
 - ⚙️ **Customizable settings**
 - 🎨 **Markdown support**
 - 🔄 **Conversation management**
+- 🌙 **Dark mode**
 - 📱 **Responsive design** (coming soon ✨)
 
 ---
 
 ## 🚀 Getting Started
 
-If you are just checking it out, you can use the hosted version at [claudy.vercel.app](https://claudy.vercel.app).
+If you are just checking it out, you can use the hosted version at [claudy-alpha.vercel.app](https://claudy-alpha.vercel.app/).
 
 To run Claudy locally, follow the steps below:
 

@@ -6,6 +6,47 @@
     --text-color: #333333;
     --border-color: #FFE4E1;
     --shadow-color: rgba(255, 127, 80, 0.2);
+    --modal-bg: white;
+    --input-bg: white;
+    --code-bg: #f6f8fa;
+}
+
+[data-theme="dark"] {
+    --primary-color: #FF6B6B;
+    --primary-dark: #FF4949;
+    --primary-light: #FF8787;
+    --bg-color: #1a1a1a !important;
+    --text-color: #E0E0E0 !important;
+    --border-color: #404040;
+    --shadow-color: rgba(0, 0, 0, 0.3);
+    --modal-bg: #2d2d2d;
+    --input-bg: #333333;
+    --code-bg: #2d2d2d;
+}
+
+/* Animations */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes slideOut {
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateX(20px);
+    }
 }
 
 @keyframes float {
@@ -32,6 +73,140 @@
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* Message animations */
+.message {
+    transition: all 0.3s ease;
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+.conversation-item {
+    animation: slideIn 0.3s ease forwards;
+}
+
+.conversation-item.deleting {
+    animation: slideOut 0.3s ease forwards;
+}
+
+/* Copy button styles */
+.copy-button {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    padding: 5px 10px;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.message:hover .copy-button,
+.code-wrapper:hover .copy-button {
+    opacity: 1;
+}
+
+/* Code block styles */
+.code-wrapper {
+    position: relative;
+    margin: 1em 0;
+}
+
+pre {
+    background-color: var(--code-bg);
+    padding: 1em;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 0;
+}
+
+/* System prompt input */
+#system-prompt {
+    width: 100%;
+    min-height: 80px;
+    padding: 10px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-color);
+    resize: vertical;
+}
+
+/* Theme selector */
+#theme-selector {
+    width: 100%;
+    padding: 10px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--input-bg);
+    color: var(--text-color);
+}
+
+/* Dark mode specific adjustments */
+[data-theme="dark"] #sidebar {
+    background-color: var(--modal-bg);
+}
+
+[data-theme="dark"] input {
+    background-color: var(--input-bg);
+    color: var(--text-color);
+}
+
+[data-theme="dark"] #input-container {
+    background-color: var(--modal-bg);
+}
+
+[data-theme="dark"] #input-box {
+    background-color: var(--input-bg);
+    color: var(--text-color);
+}
+
+[data-theme="dark"] .message.assistant {
+    background-color: var(--modal-bg);
+}
+
+[data-theme="dark"] .modal-content {
+    background-color: var(--modal-bg);
+}
+
+[data-theme="dark"] .modal-buttons button:last-child {
+    background-color: var(--input-bg);
+    color: var(--text-color);
+}
+
+/* Accept/Reject buttons */
+.action-buttons {
+    margin-top: 10px;
+    display: flex;
+    gap: 10px;
+}
+
+.accept-btn,
+.reject-btn {
+    padding: 5px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.accept-btn {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.reject-btn {
+    background-color: #f44336;
+    color: white;
+}
+
+.accept-btn:hover,
+.reject-btn:hover {
+    filter: brightness(1.1);
 }
 
 body {
